@@ -18,13 +18,65 @@ define('APP_VERSION', '2.1.3');
 |
 */
 
-$configPath = __DIR__.'/../storage/app/config.json';
-if (file_exists($configPath)) {
-    $config = json_decode(file_get_contents($configPath), true);
-    define('WEBHOOK_SECRET', $config['webhook_secret'] ?? '');
-} else {
-    define('WEBHOOK_SECRET', ''); 
+// Define default config paths
+$primaryConfigPath = __DIR__.'/../storage/app/config.json';
+$backupConfigPath = __DIR__.'/../config/webhook.backup.json';
+
+// Initialize logger for debugging
+$logger = new Monolog\Logger('app_config');
+$logger->pushHandler(new Monolog\Handler\StreamHandler(__DIR__.'/../storage/logs/config.log', Monolog\Logger::DEBUG));
+
+// Function to load and validate config
+function loadWebhookConfig($path, $logger) {
+    try {
+        if (!file_exists($path)) {
+            $logger->warning("Config file not found: $path");
+            return null;
+        }
+
+        $content = file_get_contents($path);
+        $config = json_decode($content, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $logger->error("Invalid JSON in config file: $path", ['error' => json_last_error_msg()]);
+            return null;
+        }
+
+        if (!isset($config['webhook_secret']) || empty($config['webhook_secret'])) {
+            $logger->warning("Webhook secret missing or empty in: $path");
+            return null;
+        }
+
+        return $config['webhook_secret'];
+    } catch (Exception $e) {
+        $logger->error("Failed to load config: $path", ['exception' => $e->getMessage()]);
+        return null;
+    }
 }
+
+// Load webhook secret
+$webhookSecret = null;
+
+// Try environment variable first
+if (getenv('WEBHOOK_SECRET')) {
+    $webhookSecret = getenv('WEBHOOK_SECRET');
+    $logger->info('Webhook secret loaded from environment variable');
+}
+
+// Try primary config file
+if (!$webhookSecret) {
+    $webhookSecret = loadWebhookConfig($primaryConfigPath, $logger);
+}
+
+// Try backup config file
+if (!$webhookSecret) {
+    $webhookSecret = loadWebhookConfig($backupConfigPath, $logger);
+}
+
+// Fallback to default secret
+if (!$webhookSecret) {
+    $webhookSecret = 'default_secret_123';
+    $logger->notice('Using default webhook secret', ['secret
 
 /*
 |--------------------------------------------------------------------------
